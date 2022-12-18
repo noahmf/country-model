@@ -2,11 +2,11 @@
 
 This is the public version of a data set and model I use to try to understand the world.
 
-The primary output file is under [/6-data-out/data.csv](https://github.com/noahmf/model-country/tree/main/6-data-out).
+The primary output file is under [/6-data-out/data.csv](https://github.com/noahmf/country-model/tree/main/6-data-out).
 
-<img src="https://github.com/noahmf/model-country/blob/main/fig1.png" width=95%/>
+<img src="https://github.com/noahmf/country-model/blob/main/fig1.png" width=95%/>
 
-<img src="https://github.com/noahmf/model-country/blob/main/fig2.png" width=47.5%/> <img src="https://github.com/noahmf/model-country/blob/main/fig3.png" width=47.5%/> 
+<img src="https://github.com/noahmf/country-model/blob/main/fig2.png" width=47.5%/> <img src="https://github.com/noahmf/country-model/blob/main/fig3.png" width=47.5%/> 
 
 ## Scope
 

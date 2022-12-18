@@ -1,0 +1,141 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+## Setup ---------------------------------------------------------------
+  
+source("./setup.R")
+library(ggpubr)
+```
+
+
+```{r}
+## Read ---------------------------------------------------------------
+data0 <- read_csv(path(path_out, "/data.csv"))
+data0b <- read_csv(path(path_out2, "/data-hist-sub.csv"))
+```
+
+
+```{r}
+## Fig 1 ---------------------------------------------------------------
+dataf1 <- data0 %>% 
+  filter(year%in%c(seq(1200,1750,50), seq(1800,2100,10)), country_name%in%c("United Kingdom", "France", "Mexico", "Japan", "Russia"))
+
+ggplot(data=dataf1) +
+  geom_path(aes(x=year, y=pop/1000000, color=country_name), size=1) +
+  geom_point(aes(x=year, y=pop/1000000, color=country_name), size=1.25) +
+  geom_vline(xintercept = 2020.5, linetype=2) +
+  scale_y_log10() + scale_x_continuous() +
+  theme_nf_r + labs(title="Estimated Population", subtitle="1200-2020 and UN forecast to 2100", x="", y="Millions", color="")
+ggsave("fig1.png", device = "png", dpi=500)
+
+```
+
+```{r}
+## Fig 2 ---------------------------------------------------------------
+dataf1 <- data0 %>% 
+  filter(year%in%c(seq(1950,2019,1)), country_name%in%c("United States", "Canada", "Argentina", "Chile", "Mexico", "Colombia", "Brazil", "Peru"))
+
+ggplot(data=dataf1) +
+  geom_path(aes(x=year, y=gdp/(pop*emp_pop*hrs_emp), color=country_name), size=1) +
+  geom_point(aes(x=year, y=gdp/(pop*emp_pop*hrs_emp), color=country_name), size=1.25) +
+  scale_y_log10() + expand_limits(y=0) + scale_x_continuous() +
+  theme_nf_r + labs(title="Real GDP per hour worked", subtitle="1950-2019", x="", y="2021 USD at PPPs", color="")
+ggsave("fig2.png", device = "png", dpi=500)
+
+```
+
+
+```{r}
+## Fig 3 ---------------------------------------------------------------
+dataf10 <- data0 %>% 
+  filter(year%in%c(seq(1800,1890,10), seq(1891,2026,1))) %>% 
+  group_by(year) %>% 
+  summarise(gdp=sum(gdp, na.rm=T), tfr=sum(pop*tfr, na.rm=T)/sum(pop, na.rm=T), pop=sum(pop, na.rm=T))
+
+dataf1 <- data0 %>% 
+  filter(year%in%c(seq(1800,1890,10), seq(1891,2026,1))) %>% 
+  mutate(
+    region=
+      ifelse(country_name%in%c("China"), country_name, 
+      ifelse(country_name%in%c("United States", "Canada", "Australia", "New Zealand"), '"CANZUS"', 
+      ifelse(greater_region%in%c("The West"), "Western Europe", 
+      ifelse(greater_region%in%c("South Asia", "Eastern Europe"), greater_region, 
+             NA))))
+  ) %>% 
+  drop_na(region) %>% 
+  group_by(region, year) %>% 
+  summarise(gdp=sum(gdp, na.rm=T), tfr=sum(pop*tfr, na.rm=T)/sum(pop, na.rm=T), pop=sum(pop, na.rm=T))
+
+ggplot() +
+  geom_path(aes(x=dataf1$year, y=dataf1$gdp/dataf10$gdp, color=dataf1$region), size=1) +
+  geom_point(aes(x=dataf1$year, y=dataf1$gdp/dataf10$gdp, color=dataf1$region), size=1.25) +
+  scale_y_continuous(labels=scales::percent_format(accuracy=1)) + expand_limits(y=0) +
+  geom_vline(xintercept = 2021.5, linetype=2) +
+  theme_nf_r + labs(title="Real GDP", subtitle="1800-2021 and IMF forecast to 2026", x="", y="Share of World", color="")
+ggsave("fig3.png", device = "png", dpi=500)
+
+```
+
+
+
+```{r}
+start1 <- 1880
+end1 <- 2021
+dataf0 <- data0 %>% 
+  filter(year%in%c(seq(start1,end1,1))) %>% 
+  group_by(year) %>% summarise(pop=sum(pop, na.rm=T)) %>% ungroup()
+
+dataf1 <- data0 %>% 
+  filter(year%in%c(seq(start1,end1,1))) %>% 
+  mutate(
+    region=
+      ifelse(country_name%in%c("United Kingdom", "United States", "Canada", "Autralia", "New Zealand"), "Anglosphere", 
+      ifelse(country_name%in%c("China"), country_name, 
+             NA)),
+  ) %>% drop_na(region) %>% group_by(region, year) %>% 
+  summarise(gnp=sum(gnp, na.rm=T), pop=sum(pop, na.rm=T))
+dataf1[dataf1==0] <- NA
+
+dataf2 <- data0b %>% 
+  filter(year%in%c(seq(start1,end1,1))) %>% 
+  mutate(
+    region= 
+      ifelse(hist_sub%in%c("San Francisco"), hist_sub, 
+             NA),
+  ) %>% drop_na(region) %>% group_by(region, year) %>% 
+  summarise(gnp=sum(gnp, na.rm=T), pop=sum(pop, na.rm=T))
+dataf2[dataf2==0] <- NA
+
+dataf3a <- bind_rows(dataf1, dataf2) %>% 
+  group_by(region, year) %>% 
+  summarise(gnp_pc=sum(gnp, na.rm=T)/sum(pop, na.rm=T), gnp=sum(gnp, na.rm=T), pop=sum(pop, na.rm=T)) %>% 
+  ungroup() %>% group_by(region) %>% 
+  mutate(pop_shr=pop/dataf0$pop[match(year,dataf0$year)], gnp_r=((gnp/lag(gnp,1))^(1/1))-1, gnp_pc_r=((gnp_pc/lag(gnp_pc,1))^(1/1))-1, pop_r=((pop/lag(pop,1))^(1/1))-1, band=ifelse(year<=1600,1.5,ifelse(year<=1800,1.5-(((year-1600))/200)*.35,ifelse(year<=1900,1.15-(((year-1800))/100)*.13,ifelse(year<=2022,1.02,1.02+(year-2022)*.005))))) %>% ungroup() %>% 
+  mutate(obsid=paste(year,region))
+dataf3a[dataf3a==0] <- NA
+
+dataf3 <- dataf3a
+dataf3 <- dataf3 %>% filter(region!="San Francisco")
+#dataf3$region <- factor(dataf3$region, levels=c("SF Bay Area*", "New York City*", "Ireland", "Norway", "Qatar", "Singapore", "Switzerland"))
+
+p1 <- ggplot(dataf3) +
+  geom_hline(yintercept = 0) +
+  geom_path(aes(x=year, y=pop/1000000, color=region), size=1) + scale_y_continuous(breaks=seq(0,10000,200)) +
+  expand_limits(y=0) + #geom_vline(xintercept = 2022, linetype=2) +
+  theme_classic() + labs(title="Estimated population", subtitle=paste(start1,"-",end1,sep=""), x="", y="millions", color="", fill="", linetype="", caption="\n") + theme(plot.caption = element_text(hjust=0), plot.title = element_text(face="bold"), legend.position = "none")
+
+p2 <- ggplot(dataf3) +
+  geom_hline(yintercept = 0) +
+  geom_path(aes(x=year, y=gnp/1000000000000, color=region), size=1) + scale_y_continuous(labels=scales::dollar_format(accuracy = 1), breaks=seq(0,1000000,3)) +
+  expand_limits(y=0) + #geom_vline(xintercept = 2022, linetype=2) +
+  theme_classic() + labs(title="Estimated gross income", subtitle=paste(start1,"-",end1,sep=""), x="", y="trillions 2021 USD at PPPs", color="", fill="", linetype="", caption="\n") + theme(plot.caption = element_text(hjust=1), plot.title = element_text(face="bold")) #*Additionally adjusted (generally downward)\nto account for regional price parities
+
+ggarrange(p1, p2, widths=c(.38,.62))
+#p1
+
+```
+
+

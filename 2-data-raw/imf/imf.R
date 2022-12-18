@@ -1,0 +1,91 @@
+
+## Setup
+
+source("./setup.R")
+library(readxl)
+
+## Read
+
+base <- read_csv(path(path_base, "/nmf-base-country-cross-alt.csv"))
+data_raw1 <- read_csv(path(path_data, "/imf/weooct2022/WEOOct2022all-edit.csv"), col_types = cols(.default = col_number(), ISO = col_character(), `WEO Subject Code` = col_character()))
+
+## Process
+
+data_ans1 <- data_raw1 %>% 
+  filter(`WEO Subject Code` %in% c("NGDP_RPCH", "NGDPD", "PPPGDP", "NGDPRPPPPC", "NGDPDPC", "PPPPC", "NGAP_NPGDP", "PPPEX", "NID_NGDP", "NGSD_NGDP", "PCPI", "PCPIPCH", "LUR", "LE", "LP", "GGR_NGDP", "GGX_NGDP", "GGXCNL_NGDP", "GGXONLB_NGDP", "GGXWDN_NGDP", "GGXWDG_NGDP", "BCA", "BCA_NGDP")) %>% 
+  mutate(code=paste(ISO, `WEO Subject Code`, sep="")) %>% 
+  select(code, `1980`:`2026`) %>% 
+  pivot_longer(!code, names_to = "year", values_to = "value") %>% 
+  filter(value!="n/a", value!="NULL") %>% mutate(value=as.numeric(paste(str_replace(value, ",", "")))) %>% 
+  mutate(
+    obsid=paste(base$country[match(substr(code,1,3), toupper(base$country_iso3))], year, sep=""),
+    variable=substr(code,4,100),
+    value=as.numeric(value),
+  ) %>% 
+  drop_na(value) %>% #filter(!is.null(value)) %>% 
+  select(obsid, variable, value) %>% 
+  filter(substr(obsid,1,3)%notin%c("NA1", "NA2")) %>% 
+  pivot_wider(names_from = "variable", values_from = "value") %>% 
+  mutate(
+    gdp_r=NGDP_RPCH, gdp_usd=NGDPD, gdp_usdppp=PPPGDP, gdp_pc_usd2021ppp=NGDPRPPPPC, gdp_pc_usd=NGDPDPC, gdp_pc_usdppp=PPPPC, gdp_gap=NGAP_NPGDP, ppp_exr=PPPEX, invst_gdp=NID_NGDP, grsav_gdp=NGSD_NGDP, cpi=PCPI, cpi_r=PCPIPCH, unemp=LUR, employ=LE, pop=LP, govrev_gdp=GGR_NGDP, govexp_gdp=GGX_NGDP, govnetlend_gdp=GGXCNL_NGDP, govprimnetlend_gdp=GGXONLB_NGDP, govnetdebt_gdp=GGXWDN_NGDP, govgrossdebt_gdp=GGXWDG_NGDP, cab=BCA, #cab_gdp=BCA_NGDP,
+  ) %>% 
+  group_by(substr(obsid,1,4)) %>% 
+  mutate(
+    gdp_usd2021ppp=gdp_pc_usd2021ppp*pop,
+    gdp_pc_r=ifelse(as.numeric(lag(substr(obsid,5,8),1))==as.numeric(substr(obsid,5,8))-1,((gdp_pc_usd2021ppp/lag(gdp_pc_usd2021ppp,1))-1)*100,NA),
+    pop_r=ifelse(as.numeric(lag(substr(obsid,5,8),1))==as.numeric(substr(obsid,5,8))-1,((pop/lag(pop,1))-1)*100,NA),
+  ) %>% 
+  ungroup() %>% 
+  select(obsid, gdp_r, gdp_usd, gdp_usdppp, gdp_pc_usd2021ppp, gdp_pc_usd, gdp_pc_usdppp, gdp_gap, ppp_exr, invst_gdp, grsav_gdp, cpi, cpi_r, unemp, employ, pop, pop_r, gdp_usd2021ppp, govrev_gdp, govexp_gdp, govnetlend_gdp, govprimnetlend_gdp, govnetdebt_gdp, govgrossdebt_gdp, cab, gdp_pc_r) 
+
+clean1 <- function(object){
+  object1 <- object %>% 
+    arrange(obsid) %>% 
+    pivot_longer(!obsid, names_to = "variable", values_to = "value") %>% 
+    drop_na(value) %>% 
+    mutate(value=as.numeric(as.character(value))) %>% 
+    
+    mutate(
+      country=substr(obsid,1,4),
+      country_name=base$country_name[match(country, base$country)],
+      year=as.numeric(substr(obsid,5,8)),
+      time=specify_decimal(year+.5,3),
+      obsid_time=paste(country, time, sep=""),
+      value=
+        ifelse(variable=="gdp_usd2021ppp", value*((1.105+1.09)/2)*1000000, #src: avg. of https://fred.stlouisfed.org/series/CPIAUCSL, https://fred.stlouisfed.org/series/PCEPI  (11 Oct 2022)
+        ifelse(variable=="gdp_pc_usd2021ppp", value*((1.105+1.09)/2), #src: avg. of https://fred.stlouisfed.org/series/CPIAUCSL, https://fred.stlouisfed.org/series/PCEPI  (11 Oct 2022)
+        ifelse(variable%in%c("gdp_usd", "gdp_usdppp", "cab"), value*1000000000,
+        ifelse(variable%in%c("pop"), value*1000000,
+               value)))), 
+      unit=
+        ifelse(variable%in%c("gdp_r", "invst_gdp", "grsav_gdp", "cpi_r", "unemp", "govrev_gdp", "govexp_gdp", "govnetlend_gdp", "govprimnetlend_gdp", "govnetdebt_gdp", "govgrossdebt_gdp", "gdp_pc_r", "pop_r"), "perc",
+        ifelse(variable%in%c("gdp_usd", "gdp_pc_usd", "cab"), "usd",
+        ifelse(variable%in%c("gdp_usdppp", "gdp_pc_usdppp"), "usdppp",
+        ifelse(variable%in%c("gdp_usd2021ppp", "gdp_pc_usd2021ppp"), "usd2021ppp",
+        ifelse(variable%in%c("gdp_gap", "ppp_exr", "cpi"), "na",
+        ifelse(variable%in%c("employ", "pop"), "capita",
+               NA)))))),
+      source="imf", 
+      dataset="weoapr2021",
+      type=ifelse(year<=2021, "observation", "forecast"),
+      geography="modern",
+      permission="public",
+      variable=
+        ifelse(variable%in%c("gdp_usd", "gdp_usdppp", "gdp_usd2021ppp"), "gdp", 
+        ifelse(variable%in%c("gdp_pc_usd", "gdp_pc_usdppp", "gdp_pc_usd2021ppp"), "gdp_pc", 
+               variable)),
+    ) %>% 
+    select(obsid, country, country_name, year, time, obsid_time, variable, value, unit, source, dataset, type, geography, permission)
+  
+  return(object1)
+  
+}
+
+data_ans1B <- data_ans1 %>% clean1 %>% 
+  filter(is.null(value)==F)
+
+data_out <- data_ans1B
+
+## Write
+
+write_csv(data_out, path(path_raw_out, "/imf.csv"))
